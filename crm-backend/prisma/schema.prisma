@@ -1,0 +1,283 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String        @id @default(uuid())
+  email          String        @unique
+  password       String
+  firstName      String
+  lastName       String
+  role           Role          @default(USER)
+  isActive       Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  company        Company?      @relation(fields: [companyId], references: [id])
+  companyId      String?
+  refreshTokens  RefreshToken[]
+  teams          TeamMember[]
+  reports        Report[]
+}
+
+model Company {
+  id          String   @id @default(uuid())
+  name        String
+  domain      String?
+  logo        String?
+  users       User[]
+  teams       Team[]
+  apiKeys     ApiKey[]
+  webhooks    Webhook[]
+  reports     Report[]
+  quickReplies QuickReply[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  createdAt DateTime @default(now())
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  USER
+}
+
+model Team {
+  id          String       @id @default(uuid())
+  name        String
+  description String?
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId   String
+  members     TeamMember[]
+  pipelines   Pipeline[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model TeamMember {
+  id        String   @id @default(uuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  teamId    String
+  role      TeamRole @default(MEMBER)
+  leads     Lead[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, teamId])
+}
+
+enum TeamRole {
+  LEADER
+  MEMBER
+}
+
+model Pipeline {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  teamId      String
+  stages      Stage[]
+  leads       Lead[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Stage {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  color       String?
+  order       Int
+  pipeline    Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  pipelineId  String
+  leads       Lead[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Lead {
+  id          String         @id @default(uuid())
+  name        String
+  email       String?
+  phone       String?
+  company     String?
+  value       Float?
+  status      LeadStatus     @default(ACTIVE)
+  notes       String?
+  pipeline    Pipeline       @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  pipelineId  String
+  stage       Stage          @relation(fields: [stageId], references: [id])
+  stageId     String
+  assignedTo  TeamMember?    @relation(fields: [assignedToId], references: [id])
+  assignedToId String?
+  customFields Json?
+  tags        LeadTag[]
+  contact     Contact?       
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+model LeadTag {
+  id        String   @id @default(uuid())
+  name      String
+  color     String?
+  leads     Lead[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum LeadStatus {
+  ACTIVE
+  WON
+  LOST
+  ARCHIVED
+}
+
+// Chat and WhatsApp integration models
+model Contact {
+  id          String      @id @default(uuid())
+  name        String
+  phoneNumber String      @unique
+  profilePic  String?
+  lead        Lead?       @relation(fields: [leadId], references: [id])
+  leadId      String?     @unique
+  messages    Message[]
+  chats       Chat[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model Chat {
+  id          String      @id @default(uuid())
+  contact     Contact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contactId   String
+  lastMessage Message?    @relation("LastMessage", fields: [lastMessageId], references: [id])
+  lastMessageId String?   @unique
+  messages    Message[]
+  isArchived  Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model Message {
+  id          String      @id @default(uuid())
+  content     String
+  mediaUrl    String?
+  mediaType   MediaType?
+  direction   MessageDirection
+  status      MessageStatus @default(SENT)
+  contact     Contact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contactId   String
+  chat        Chat        @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  chatId      String
+  lastMessageForChat Chat? @relation("LastMessage")
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model QuickReply {
+  id          String      @id @default(uuid())
+  title       String
+  content     String
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId   String
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+// API and Webhook models for Phase 5
+model ApiKey {
+  id          String      @id @default(uuid())
+  name        String
+  key         String      @unique
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId   String
+  isActive    Boolean     @default(true)
+  lastUsed    DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model Webhook {
+  id          String      @id @default(uuid())
+  name        String
+  url         String
+  secret      String
+  events      WebhookEvent[]
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId   String
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+enum WebhookEvent {
+  LEAD_CREATED
+  LEAD_UPDATED
+  LEAD_DELETED
+  LEAD_STAGE_CHANGED
+  MESSAGE_RECEIVED
+  MESSAGE_SENT
+}
+
+// Report models
+model Report {
+  id          String      @id @default(uuid())
+  name        String
+  type        ReportType
+  filters     Json?
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId   String
+  createdBy   User        @relation(fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+enum ReportType {
+  PIPELINE_PERFORMANCE
+  TEAM_PERFORMANCE
+  CONVERSION_RATES
+  LEAD_SOURCE
+  SALES_FORECAST
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  AUDIO
+  DOCUMENT
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageStatus {
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
